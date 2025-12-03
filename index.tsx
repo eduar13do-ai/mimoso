@@ -2372,9 +2372,14 @@ function SignupView({ onSignup }: { onSignup: (data: any) => Promise<void> }) {
 }
 
 function App() {
-  const [view, setView] = useState<'admin' | 'user'>('admin');
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [participantsData, setParticipantsData] = useState<Participant[]>(MOCK_DATA);
+
+  // Determine initial view based on URL parameter '?admin'
+  const [view, setView] = useState<'admin' | 'user'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has('admin') ? 'admin' : 'user';
+  });
 
   const handleRegister = async (formData: any) => {
     // Check if user exists by CPF
@@ -2428,11 +2433,6 @@ function App() {
       ) : (
         <SignupView onSignup={handleRegister} />
       )}
-
-      {/* Botão Flutuante para Alternar Visão (apenas para demonstração) */}
-      <button className="dev-toggle" onClick={() => setView(view === 'admin' ? 'user' : 'admin')}>
-        Alternar para {view === 'admin' ? 'Cadastro (User)' : 'Painel Admin'}
-      </button>
     </>
   );
 }
