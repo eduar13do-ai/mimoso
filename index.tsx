@@ -1,5 +1,13 @@
 import React, { useState, useEffect, FormEvent } from "react";
 import { createRoot } from "react-dom/client";
+import { createClient } from "@supabase/supabase-js";
+
+// --- CONFIGURAÇÃO DO SUPABASE ---
+const SUPABASE_URL = "https://gozdmpjiyzjknmwozxjr.supabase.co";
+// IMPORTANTE: Chave Anon fornecida
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvemRtcGppeXpqa25td296eGpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyNDE3NDksImV4cCI6MjA4MDgxNzc0OX0.K97oGp1XBtiPM-2eA_dnVQDfoLv_fOJKSRXxVsAtEoA";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* --- ICONS --- */
 const Icons = {
@@ -83,6 +91,29 @@ body {
 .page-container, .signup-wrapper, .dev-toggle {
   position: relative;
   z-index: 2;
+}
+
+.dev-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  padding: 12px 24px;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 99px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: transform 0.2s;
+}
+
+.dev-toggle:hover {
+  transform: scale(1.05);
 }
 
 .floating-item {
@@ -1586,16 +1617,23 @@ interface Participant {
   participationCount: number; // New Field
 }
 
-const MOCK_DATA: Participant[] = [
-  { id: '1', name: 'Felipe da Silva Freitas', whatsapp: '11988888159', platformId: '5958817', cpf: '01838522230', date: '27/11/2025, 13:49', live: 'Live Oficial', status: 'eligible', isNew: true, attended: true, hasWon: false, participationCount: 1 },
-  { id: '2', name: 'Bruno Rodrigues dos Santos', whatsapp: '21977774598', platformId: '43R2546692', cpf: '12754411139', date: '27/11/2025, 13:48', live: 'Live Oficial', status: 'eligible', isNew: false, attended: true, hasWon: true, participationCount: 15 },
-  { id: '3', name: 'Mariana Oliveira', whatsapp: '31966552211', platformId: '5534717', cpf: '07060255500', date: '27/11/2025, 13:47', live: 'Live Oficial', status: 'eligible', isNew: true, attended: false, hasWon: false, participationCount: 1 },
-  { id: '4', name: 'Carlos Eduardo Souza', whatsapp: '41999887766', platformId: '9901234', cpf: '33344455566', date: '27/11/2025, 13:45', live: 'Live Oficial', status: 'eligible', isNew: false, attended: false, hasWon: false, participationCount: 3 },
-  { id: '5', name: 'Ana Beatriz Costa', whatsapp: '11955443322', platformId: '1122334', cpf: '98765432100', date: '27/11/2025, 13:40', live: 'Live Oficial', status: 'eligible', isNew: true, attended: true, hasWon: false, participationCount: 2 },
-  { id: '6', name: 'Lucas Pereira', whatsapp: '11911223344', platformId: 'user123', cpf: '11122233344', date: '27/11/2025, 13:30', live: 'Live Oficial', status: 'eligible', isNew: true, attended: true, participationCount: 5 },
-  { id: '7', name: 'Julia Martins', whatsapp: '11955667788', platformId: 'julia_m', cpf: '55566677788', date: '27/11/2025, 13:25', live: 'Live Oficial', status: 'eligible', isNew: true, attended: false, participationCount: 1 },
-  { id: '8', name: 'Roberto Almeida', whatsapp: '21988887777', platformId: 'beto_al', cpf: '99988877766', date: '27/11/2025, 13:20', live: 'Live Oficial', status: 'eligible', isNew: false, attended: true, participationCount: 8 },
-];
+// Function to map DB data to our frontend Interface
+const mapSupabaseDataToParticipant = (data: any[]): Participant[] => {
+  return data.map(item => ({
+    id: item.id,
+    name: item.name,
+    whatsapp: item.whatsapp,
+    platformId: item.platform_id,
+    cpf: item.cpf,
+    date: new Date(item.created_at).toLocaleString('pt-BR'),
+    live: 'Live Oficial',
+    status: 'eligible', // Default status or add to DB
+    isNew: item.is_new,
+    attended: item.attended,
+    hasWon: item.has_won,
+    participationCount: item.participation_count
+  }));
+};
 
 // --- COMPONENTS ---
 
@@ -1688,15 +1726,17 @@ function RouletteModal({ data, onClose }: { data: Participant[]; onClose: () => 
     let result = data;
     if (filter === 'new') result = data.filter(p => p.isNew);
     if (filter === 'attended') result = data.filter(p => p.attended);
+    // Important: Filter out people who already won
+    result = result.filter(p => !p.hasWon);
     return result;
   };
 
-  const handleSpin = () => {
+  const handleSpin = async () => {
     if (hasStarted) return; 
 
     const eligibleData = getFilteredData();
     if (eligibleData.length === 0) {
-        alert("Nenhum participante encontrado com este filtro!");
+        alert("Nenhum participante elegível encontrado com este filtro!");
         return;
     }
 
@@ -1704,9 +1744,15 @@ function RouletteModal({ data, onClose }: { data: Participant[]; onClose: () => 
     const randomIndex = Math.floor(Math.random() * eligibleData.length);
     const selectedWinner = eligibleData[randomIndex];
     setWinner(selectedWinner);
+    
+    // UPDATE DB IMMEDIATELY TO PREVENT DOUBLE WINS
+    if (supabase) {
+      await supabase.from('participants').update({ has_won: true }).eq('id', selectedWinner.id);
+    }
 
     const segments: Participant[] = [];
     const winnerSegmentIndex = Math.floor(Math.random() * SEGMENTS_COUNT);
+    // Fill segments with eligible players
     const fillerData = eligibleData.length < SEGMENTS_COUNT ? data : eligibleData;
 
     for (let i = 0; i < SEGMENTS_COUNT; i++) {
@@ -1851,17 +1897,33 @@ function RouletteModal({ data, onClose }: { data: Participant[]; onClose: () => 
 }
 
 function AdminLogin({ onLogin }: { onLogin: () => void }) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === "mimosogameplay" && password === "mimosex2000") {
-      onLogin();
-    } else {
-      setError("Credenciais incorretas.");
+    setLoading(true);
+    setError("");
+
+    if (!supabase) {
+        setError("Erro de configuração do Supabase.");
+        setLoading(false);
+        return;
     }
+
+    const { error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+    });
+
+    if (error) {
+        setError(error.message);
+    } else {
+        // Auth state change will handle the redirect in App component
+    }
+    setLoading(false);
   };
 
   return (
@@ -1874,14 +1936,14 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
         
         <form onSubmit={handleLogin}>
           <div className="field-group">
-            <label>Login</label>
+            <label>Email</label>
             <div className="input-wrapper">
               <span className="input-icon"><Icons.User /></span>
               <input 
                 type="text" 
-                value={username} 
-                onChange={(e) => setUsername(e.target.value)} 
-                placeholder="Usuário"
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                placeholder="admin@exemplo.com"
                 required 
               />
             </div>
@@ -1903,8 +1965,8 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
 
           {error && <div className="form-feedback error">{error}</div>}
 
-          <button type="submit" className="btn-submit" style={{ width: '100%', justifyContent: 'center' }}>
-            <span>Acessar Painel</span>
+          <button type="submit" className="btn-submit" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
+            <span>{loading ? "Entrando..." : "Acessar Painel"}</span>
           </button>
         </form>
       </section>
@@ -1912,7 +1974,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-function AdminDashboard({ data }: { data: Participant[] }) {
+function AdminDashboard({ data, onLogout }: { data: Participant[], onLogout: () => void }) {
   const [showSensitive, setShowSensitive] = useState(false);
   const [rouletteState, setRouletteState] = useState<'closed' | 'spinning'>('closed');
   const [liveActive, setLiveActive] = useState(true);
@@ -1979,9 +2041,9 @@ function AdminDashboard({ data }: { data: Participant[] }) {
     document.body.removeChild(link);
   };
 
-  const totalParticipantes = 15551 + data.length; 
-  const totalElegiveis = data.filter(p => p.status === 'eligible').length + 3420; 
-  const totalPremiados = 125 + data.filter(p => p.hasWon).length; 
+  const totalParticipantes = data.length; 
+  const totalElegiveis = data.filter(p => !p.hasWon).length; 
+  const totalPremiados = data.filter(p => p.hasWon).length; 
 
   return (
     <div className="page-container">
@@ -2009,6 +2071,9 @@ function AdminDashboard({ data }: { data: Participant[] }) {
           </p>
         </div>
         <div className="header-actions">
+           <button className="btn btn-outline" onClick={onLogout}>
+              Sair
+           </button>
           <button 
              className={`btn ${liveActive ? 'btn-danger' : 'btn-primary'}`} 
              onClick={toggleLive}
@@ -2020,10 +2085,6 @@ function AdminDashboard({ data }: { data: Participant[] }) {
           <button className="btn btn-primary" onClick={() => setRouletteState('spinning')} disabled={!liveActive} style={{ opacity: liveActive ? 1 : 0.5 }}>
             <Icons.Dice />
             REALIZAR SORTEIO
-          </button>
-          <button className="btn btn-secondary">
-            <Icons.Trophy />
-            ESCOLHER VENCEDOR
           </button>
         </div>
       </header>
@@ -2176,7 +2237,7 @@ function AdminDashboard({ data }: { data: Participant[] }) {
                   <td>
                     <span className="status-badge">
                       <span className="status-dot"></span>
-                      Elegível
+                      {user.hasWon ? <span style={{color: 'var(--accent)'}}>PREMIADO</span> : 'Elegível'}
                     </span>
                   </td>
                   <td>
@@ -2192,8 +2253,13 @@ function AdminDashboard({ data }: { data: Participant[] }) {
   );
 }
 
-// --- SIGNUP COMPONENT (EXISTING) ---
-function SignupView({ onSignup }: { onSignup: (data: any) => Promise<void> }) {
+// --- SIGNUP COMPONENT (UPDATED) ---
+interface SignupViewProps {
+  onSignup: (data: any) => Promise<{success: boolean, message: string}>;
+  onCheckIn: (data: any) => Promise<{success: boolean, message: string}>;
+}
+
+function SignupView({ onSignup, onCheckIn }: SignupViewProps) {
     const [isLoginMode, setIsLoginMode] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [feedback, setFeedback] = useState({ text: "", type: "" });
@@ -2219,18 +2285,42 @@ function SignupView({ onSignup }: { onSignup: (data: any) => Promise<void> }) {
           cpf: formData.get("cpf") as string,
         };
 
-        // Simulate network delay
-        setTimeout(() => {
-            onSignup(payload);
-            setFeedback({ text: "Cadastro realizado com sucesso! Boa sorte no sorteio 🙌", type: "success" });
+        const result = await onSignup(payload);
+        
+        if (result.success) {
+            setFeedback({ text: result.message, type: "success" });
             form.reset();
-            setIsSubmitting(false);
-        }, 1000);
+        } else {
+            setFeedback({ text: result.message, type: "error" });
+        }
+        
+        setIsSubmitting(false);
     };
 
-    const handleLogin = (e: FormEvent<HTMLFormElement>) => {
+    const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        setFeedback({ text: "Login simulado com sucesso!", type: "success" });
+        setFeedback({ text: "", type: "" });
+        const form = e.currentTarget;
+        const formData = new FormData(form);
+        
+        const cpf = formData.get("cpf-login") as string;
+        const nome = formData.get("nome-login") as string;
+        
+        if (!cpf || !nome) {
+            setFeedback({ text: "Preencha o CPF e o Nome para marcar presença.", type: "error" });
+            return;
+        }
+        
+        setIsSubmitting(true);
+        
+        const result = await onCheckIn({ cpf, nome });
+        if (result.success) {
+            setFeedback({ text: result.message, type: "success" });
+            form.reset();
+        } else {
+            setFeedback({ text: result.message, type: "error" });
+        }
+        setIsSubmitting(false);
     };
 
     const localToggle = (e: React.MouseEvent, mode: 'login' | 'signup') => {
@@ -2282,7 +2372,7 @@ function SignupView({ onSignup }: { onSignup: (data: any) => Promise<void> }) {
                     <section className="hero-right">
                         {!isLoginMode && (
                           <div className="form-header">
-                            <div className="form-title">Entrar no sorteio da live</div>
+                            <div className="form-title">Cadastrar-se no sorteio</div>
                             <div className="form-subtitle">Preencha com atenção. Usaremos esses dados para validar o ganhador.</div>
                           </div>
                         )}
@@ -2328,11 +2418,16 @@ function SignupView({ onSignup }: { onSignup: (data: any) => Promise<void> }) {
                           </form>
                         ) : (
                           <form onSubmit={handleLogin}>
-                             <div className="form-title">Entrar no sorteio</div>
-                             <div style={{ marginBottom: '16px' }}></div>
-                             <div className="field-group"><label>CPF<span className="required">*</span></label><div className="input-wrapper"><span className="input-icon"><Icons.Hash /></span><input name="cpf-login" type="text" placeholder="Somente números" required /></div></div>
-                             <div className="field-group"><label>Nome completo<span className="required">*</span></label><div className="input-wrapper"><span className="input-icon"><Icons.User /></span><input name="nome-login" type="text" placeholder="Ex: João da Silva" required /></div></div>
-                             <button type="submit" className="btn-submit"><span>Entrar</span></button>
+                             <div className="form-header">
+                                <div className="form-title">Marcar Presença</div>
+                                <div className="form-subtitle">Confirme seus dados para entrar no sorteio de hoje.</div>
+                             </div>
+                             
+                             <div className="field-group"><label>CPF (Apenas números)<span className="required">*</span></label><div className="input-wrapper"><span className="input-icon"><Icons.Hash /></span><input name="cpf-login" type="text" placeholder="000.000.000-00" required /></div></div>
+                             <div className="field-group"><label>Nome cadastrado<span className="required">*</span></label><div className="input-wrapper"><span className="input-icon"><Icons.User /></span><input name="nome-login" type="text" placeholder="Ex: João da Silva" required /></div></div>
+                             
+                             <button type="submit" className="btn-submit" disabled={isSubmitting}>{isSubmitting ? <span>Verificando...</span> : <span>Entrar na Live de Hoje</span>}</button>
+                             
                              <div className="toggle-text" style={{ marginTop: "12px", textAlign: 'center' }}>Não tem cadastro? <a href="#" onClick={(e) => localToggle(e, 'signup')}>Clique aqui para cadastrar</a>.</div>
                           </form>
                         )}
@@ -2373,53 +2468,126 @@ function SignupView({ onSignup }: { onSignup: (data: any) => Promise<void> }) {
 
 function App() {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [participantsData, setParticipantsData] = useState<Participant[]>(MOCK_DATA);
-
-  // Determine initial view based on URL parameter '?admin'
+  const [participantsData, setParticipantsData] = useState<Participant[]>([]);
+  
+  // Initialize view based on URL params
   const [view, setView] = useState<'admin' | 'user'>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.has('admin') ? 'admin' : 'user';
   });
 
-  const handleRegister = async (formData: any) => {
-    // Check if user exists by CPF
-    const existingIndex = participantsData.findIndex(p => p.cpf === formData.cpf);
+  // Check Auth State
+  useEffect(() => {
+    if(!supabase) return;
     
-    if (existingIndex >= 0) {
-      // User exists, increment participation
-      const updatedData = [...participantsData];
-      const existingUser = updatedData[existingIndex];
-      
-      updatedData[existingIndex] = {
-        ...existingUser,
-        participationCount: existingUser.participationCount + 1,
-        date: new Date().toLocaleString('pt-BR'), // Update last activity date
-        isNew: false // Returning user
+    supabase.auth.getSession().then(({ data: { session } }) => {
+        setIsAdminLoggedIn(!!session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setIsAdminLoggedIn(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Fetch Participants from Supabase
+  const fetchParticipants = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+        .from('participants')
+        .select('*')
+        .order('created_at', { ascending: false });
+    
+    if (data) {
+        setParticipantsData(mapSupabaseDataToParticipant(data));
+    }
+  };
+
+  useEffect(() => {
+     fetchParticipants();
+
+     // Optional: Subscribe to changes for realtime updates
+     if (supabase) {
+         const channel = supabase
+            .channel('public:participants')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, (payload) => {
+                // Simplest way: re-fetch on any change. For high scale, append/update locally.
+                fetchParticipants();
+            })
+            .subscribe();
+            
+         return () => { supabase.removeChannel(channel); }
+     }
+  }, []);
+
+
+  // HANDLER: Create New User (Registration)
+  const handleRegister = async (formData: any): Promise<{success: boolean, message: string}> => {
+    if (!supabase) return { success: false, message: "Erro de conexão." };
+
+    // Check if user exists by CPF
+    const { data: existingUser } = await supabase
+        .from('participants')
+        .select('id')
+        .eq('cpf', formData.cpf)
+        .single();
+    
+    if (existingUser) {
+      return { 
+          success: false, 
+          message: "Este CPF já possui cadastro! Vá até a aba 'Entrar' para marcar sua presença." 
       };
-      
-      // Move to top of list for visibility
-      updatedData.splice(existingIndex, 1);
-      updatedData.unshift(updatedData[existingIndex]);
-      
-      setParticipantsData(updatedData);
     } else {
       // New user
-      const newUser: Participant = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: formData.nome,
-        whatsapp: formData.whatsapp,
-        platformId: formData.idPlataforma,
-        cpf: formData.cpf,
-        date: new Date().toLocaleString('pt-BR'),
-        live: 'Live Oficial',
-        status: 'eligible',
-        isNew: true,
-        attended: true,
-        hasWon: false,
-        participationCount: 1
-      };
-      setParticipantsData([newUser, ...participantsData]);
+      const { error } = await supabase.from('participants').insert({
+          name: formData.nome,
+          whatsapp: formData.whatsapp,
+          platform_id: formData.idPlataforma, // Note: DB column uses snake_case
+          cpf: formData.cpf,
+      });
+
+      if (error) {
+          console.error(error);
+          return { success: false, message: "Erro ao salvar cadastro. Tente novamente." };
+      }
+      return { success: true, message: "Cadastro realizado com sucesso! Boa sorte!" };
     }
+  };
+
+  // HANDLER: Check-In (Login for Attendance)
+  const handleCheckIn = async (loginData: {cpf: string, nome: string}): Promise<{success: boolean, message: string}> => {
+      if (!supabase) return { success: false, message: "Erro de conexão." };
+
+      const { data: user, error } = await supabase
+        .from('participants')
+        .select('id, participation_count, name')
+        .eq('cpf', loginData.cpf)
+        .single();
+      
+      if (!user) {
+          return { success: false, message: "CPF não encontrado. Faça o cadastro primeiro!" };
+      }
+      
+      const { error: updateError } = await supabase
+        .from('participants')
+        .update({ 
+            participation_count: (user.participation_count || 0) + 1,
+            attended: true,
+            is_new: false,
+            created_at: new Date().toISOString() // Updates the sort order to top
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+           return { success: false, message: "Erro ao atualizar presença." };
+      }
+      
+      return { success: true, message: `Bem-vindo de volta, ${user.name.split(' ')[0]}! Presença confirmada.` };
+  }
+
+  const handleLogout = async () => {
+    if (supabase) await supabase.auth.signOut();
   };
 
   return (
@@ -2429,10 +2597,15 @@ function App() {
       <CasinoBackground />
       
       {view === 'admin' ? (
-        isAdminLoggedIn ? <AdminDashboard data={participantsData} /> : <AdminLogin onLogin={() => setIsAdminLoggedIn(true)} />
+        isAdminLoggedIn ? <AdminDashboard data={participantsData} onLogout={handleLogout} /> : <AdminLogin onLogin={() => {}} />
       ) : (
-        <SignupView onSignup={handleRegister} />
+        <SignupView onSignup={handleRegister} onCheckIn={handleCheckIn} />
       )}
+
+      {/* Floating Toggle Button */}
+      <button className="dev-toggle" onClick={() => setView(view === 'admin' ? 'user' : 'admin')}>
+        Alternar para {view === 'admin' ? 'Cadastro (User)' : 'Painel Admin'}
+      </button>
     </>
   );
 }
