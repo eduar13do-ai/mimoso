@@ -1621,7 +1621,7 @@ interface Participant {
 const mapSupabaseDataToParticipant = (data: any[]): Participant[] => {
   return data.map(item => ({
     id: item.id,
-    name: item.name,
+    name: item.nome, // Change from name to nome
     whatsapp: item.whatsapp,
     platformId: item.platform_id,
     cpf: item.cpf,
@@ -1747,7 +1747,7 @@ function RouletteModal({ data, onClose }: { data: Participant[]; onClose: () => 
     
     // UPDATE DB IMMEDIATELY TO PREVENT DOUBLE WINS
     if (supabase) {
-      await supabase.from('participants').update({ has_won: true }).eq('id', selectedWinner.id);
+      await supabase.from('participantes').update({ has_won: true }).eq('id', selectedWinner.id);
     }
 
     const segments: Participant[] = [];
@@ -2495,7 +2495,7 @@ function App() {
   const fetchParticipants = async () => {
     if (!supabase) return;
     const { data } = await supabase
-        .from('participants')
+        .from('participantes')
         .select('*')
         .order('created_at', { ascending: false });
     
@@ -2510,8 +2510,8 @@ function App() {
      // Optional: Subscribe to changes for realtime updates
      if (supabase) {
          const channel = supabase
-            .channel('public:participants')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, () => {
+            .channel('public:participantes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'participantes' }, () => {
                 // Simplest way: re-fetch on any change. For high scale, append/update locally.
                 fetchParticipants();
             })
@@ -2528,7 +2528,7 @@ function App() {
 
     // Check if user exists by CPF
     const { data: existingUser } = await supabase
-        .from('participants')
+        .from('participantes')
         .select('id')
         .eq('cpf', formData.cpf)
         .single();
@@ -2540,8 +2540,8 @@ function App() {
       };
     } else {
       // New user
-      const { error } = await supabase.from('participants').insert({
-          name: formData.nome,
+      const { error } = await supabase.from('participantes').insert({
+          nome: formData.nome,
           whatsapp: formData.whatsapp,
           platform_id: formData.idPlataforma, // Note: DB column uses snake_case
           cpf: formData.cpf,
@@ -2560,8 +2560,8 @@ function App() {
       if (!supabase) return { success: false, message: "Erro de conexão." };
 
       const { data: user } = await supabase
-        .from('participants')
-        .select('id, participation_count, name')
+        .from('participantes')
+        .select('id, participation_count, nome')
         .eq('cpf', loginData.cpf)
         .single();
       
@@ -2570,7 +2570,7 @@ function App() {
       }
       
       const { error: updateError } = await supabase
-        .from('participants')
+        .from('participantes')
         .update({ 
             participation_count: (user.participation_count || 0) + 1,
             attended: true,
@@ -2583,7 +2583,7 @@ function App() {
            return { success: false, message: "Erro ao atualizar presença." };
       }
       
-      return { success: true, message: `Bem-vindo de volta, ${user.name.split(' ')[0]}! Presença confirmada.` };
+      return { success: true, message: `Bem-vindo de volta, ${user.nome.split(' ')[0]}! Presença confirmada.` };
   }
 
   const handleLogout = async () => {
