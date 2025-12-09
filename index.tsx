@@ -1896,7 +1896,7 @@ function RouletteModal({ data, onClose }: { data: Participant[]; onClose: () => 
   );
 }
 
-function AdminLogin({ onLogin }: { onLogin: () => void }) {
+function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -2494,7 +2494,7 @@ function App() {
   // Fetch Participants from Supabase
   const fetchParticipants = async () => {
     if (!supabase) return;
-    const { data, error } = await supabase
+    const { data } = await supabase
         .from('participants')
         .select('*')
         .order('created_at', { ascending: false });
@@ -2511,7 +2511,7 @@ function App() {
      if (supabase) {
          const channel = supabase
             .channel('public:participants')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, (payload) => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, () => {
                 // Simplest way: re-fetch on any change. For high scale, append/update locally.
                 fetchParticipants();
             })
@@ -2559,7 +2559,7 @@ function App() {
   const handleCheckIn = async (loginData: {cpf: string, nome: string}): Promise<{success: boolean, message: string}> => {
       if (!supabase) return { success: false, message: "Erro de conexão." };
 
-      const { data: user, error } = await supabase
+      const { data: user } = await supabase
         .from('participants')
         .select('id, participation_count, name')
         .eq('cpf', loginData.cpf)
@@ -2597,7 +2597,7 @@ function App() {
       <CasinoBackground />
       
       {view === 'admin' ? (
-        isAdminLoggedIn ? <AdminDashboard data={participantsData} onLogout={handleLogout} /> : <AdminLogin onLogin={() => {}} />
+        isAdminLoggedIn ? <AdminDashboard data={participantsData} onLogout={handleLogout} /> : <AdminLogin />
       ) : (
         <SignupView onSignup={handleRegister} onCheckIn={handleCheckIn} />
       )}
